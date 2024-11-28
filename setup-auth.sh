@@ -5,260 +5,366 @@ GREEN='\033[0;32m'
 BLUE='\033[0;34m'
 NC='\033[0m'
 
-echo -e "${BLUE}Configuration des fichiers et composants manquants...${NC}"
+echo -e "${BLUE}Ajout des fichiers manquants pour la conversion complète...${NC}"
 
-# Types supplémentaires
-cat > src/types/index.ts << 'EOL'
-export interface User {
-  uid: string;
-  email: string | null;
-  displayName: string | null;
-  photoURL: string | null;
-}
+# 1. Constants supplémentaires
+mkdir -p src/constants
+cat > src/constants/theme.ts << 'EOL'
+import { colors } from './colors';
 
-export interface Chat {
+export const theme = {
+  light: {
+    background: '#FFFFFF',
+    surface: '#F5F5F5',
+    primary: colors.primary,
+    text: '#000000',
+    textSecondary: '#666666',
+    border: '#E0E0E0',
+  },
+  dark: {
+    background: colors.background,
+    surface: colors.surface,
+    primary: colors.primary,
+    text: colors.text,
+    textSecondary: colors.textSecondary,
+    border: colors.border,
+  },
+};
+
+export const spacing = {
+  xs: 4,
+  sm: 8,
+  md: 16,
+  lg: 24,
+  xl: 32,
+};
+
+export const typography = {
+  sizes: {
+    xs: 12,
+    sm: 14,
+    base: 16,
+    lg: 18,
+    xl: 20,
+    '2xl': 24,
+  },
+  weights: {
+    normal: '400',
+    medium: '500',
+    semibold: '600',
+    bold: '700',
+  },
+};
+EOL
+
+# 2. Types supplémentaires
+cat > src/types/chat.ts << 'EOL'
+export interface ChatParticipant {
   id: string;
-  name: string;
-  avatar?: string;
-  lastMessage?: string;
-  lastMessageTime: string;
-  participants: Record<string, boolean>;
-  online?: boolean;
-  unreadCount: number;
+  email: string;
+  displayName?: string;
+  photoURL?: string;
+  lastActive?: string;
 }
 
-export interface Message {
+export interface ChatMessage {
   id: string;
   content: string;
   sender: string;
   timestamp: string;
   status: 'sent' | 'delivered' | 'read';
+  type: 'text' | 'image' | 'file';
+  metadata?: {
+    fileUrl?: string;
+    fileName?: string;
+    fileSize?: number;
+    imageWidth?: number;
+    imageHeight?: number;
+  };
+}
+
+export interface ChatNotification {
+  id: string;
+  chatId: string;
+  message: ChatMessage;
+  read: boolean;
+  createdAt: string;
 }
 EOL
 
-# Utils
-mkdir -p src/utils
+cat > src/types/theme.ts << 'EOL'
+export interface Theme {
+  background: string;
+  surface: string;
+  primary: string;
+  text: string;
+  textSecondary: string;
+  border: string;
+}
 
-cat > src/utils/format.ts << 'EOL'
-import { format, isToday, isYesterday } from 'date-fns';
-
-export const formatTime = (date: string | Date) => {
-  const messageDate = new Date(date);
-  
-  if (isToday(messageDate)) {
-    return format(messageDate, 'HH:mm');
-  }
-  
-  if (isYesterday(messageDate)) {
-    return 'Yesterday';
-  }
-  
-  return format(messageDate, 'dd/MM/yyyy');
-};
+export type ThemeMode = 'light' | 'dark' | 'system';
 EOL
 
-cat > src/utils/validation.ts << 'EOL'
-export const validateEmail = (email: string): boolean => {
-  const regex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-  return regex.test(email);
-};
-
-export const validatePassword = (password: string): boolean => {
-  return password.length >= 6;
-};
-EOL
-
-# Mettre à jour LoginScreen
-cat > src/screens/auth/LoginScreen.tsx << 'EOL'
+# 3. Composants UI supplémentaires
+cat > src/components/ui/IconButton.tsx << 'EOL'
 import React from 'react';
-import { View, StyleSheet, KeyboardAvoidingView, Platform } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
-import { LoginForm } from '../../components/auth/LoginForm';
+import { TouchableOpacity, StyleSheet } from 'react-native';
 import { colors } from '../../constants/colors';
-import { useAuthStore } from '../../stores/useAuthStore';
-import type { NativeStackScreenProps } from '@react-navigation/native-stack';
-import type { RootStackParamList } from '../../types/navigation';
 
-type Props = NativeStackScreenProps<RootStackParamList, 'Login'>;
+interface IconButtonProps {
+  onPress: () => void;
+  icon: React.ReactNode;
+  size?: number;
+  color?: string;
+  disabled?: boolean;
+}
 
-export const LoginScreen = ({ navigation }: Props) => {
-  const { login, register, loading, error } = useAuthStore();
-
-  const handleSubmit = async ({
-    email,
-    password,
-    isRegistering,
-  }: {
-    email: string;
-    password: string;
-    isRegistering: boolean;
-  }) => {
-    try {
-      if (isRegistering) {
-        await register(email, password);
-      } else {
-        await login(email, password);
-      }
-      navigation.replace('Main');
-    } catch (error) {
-      console.error('Authentication error:', error);
-    }
-  };
-
+export const IconButton = ({
+  onPress,
+  icon,
+  size = 40,
+  color = colors.text,
+  disabled = false,
+}: IconButtonProps) => {
   return (
-    <SafeAreaView style={styles.safeArea}>
-      <KeyboardAvoidingView
-        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-        style={styles.container}
-      >
-        <View style={styles.content}>
-          <LoginForm
-            onSubmit={handleSubmit}
-            loading={loading}
-            error={error}
-          />
-        </View>
-      </KeyboardAvoidingView>
-    </SafeAreaView>
+    <TouchableOpacity
+      style={[
+        styles.container,
+        { width: size, height: size },
+        disabled && styles.disabled,
+      ]}
+      onPress={onPress}
+      disabled={disabled}
+    >
+      {icon}
+    </TouchableOpacity>
   );
 };
 
 const styles = StyleSheet.create({
-  safeArea: {
-    flex: 1,
-    backgroundColor: colors.background,
-  },
   container: {
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderRadius: 8,
+  },
+  disabled: {
+    opacity: 0.5,
+  },
+});
+EOL
+
+cat > src/components/ui/Modal.tsx << 'EOL'
+import React from 'react';
+import {
+  Modal as RNModal,
+  View,
+  TouchableOpacity,
+  StyleSheet,
+  useWindowDimensions,
+} from 'react-native';
+import { colors } from '../../constants/colors';
+
+interface ModalProps {
+  visible: boolean;
+  onClose: () => void;
+  children: React.ReactNode;
+}
+
+export const Modal = ({ visible, onClose, children }: ModalProps) => {
+  const { height } = useWindowDimensions();
+
+  return (
+    <RNModal
+      visible={visible}
+      transparent
+      animationType="slide"
+      onRequestClose={onClose}
+    >
+      <TouchableOpacity
+        style={styles.overlay}
+        activeOpacity={1}
+        onPress={onClose}
+      >
+        <View 
+          style={[
+            styles.content,
+            { maxHeight: height * 0.9 }
+          ]}
+        >
+          {children}
+        </View>
+      </TouchableOpacity>
+    </RNModal>
+  );
+};
+
+const styles = StyleSheet.create({
+  overlay: {
     flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'center',
+    padding: 16,
   },
   content: {
-    flex: 1,
-    justifyContent: 'center',
+    backgroundColor: colors.surface,
+    borderRadius: 12,
     padding: 16,
   },
 });
 EOL
 
-# Mise à jour du ChatScreen complet
-cat > src/screens/chat/ChatScreen.tsx << 'EOL'
-import React, { useEffect, useState } from 'react';
-import { View, StyleSheet } from 'react-native';
-import { ChatList } from '../../components/chat/ChatList';
-import { ChatArea } from '../../components/chat/ChatArea';
-import { ChatHeader } from '../../components/chat/ChatHeader';
-import { NewChatDialog } from '../../components/chat/NewChatDialog';
-import { EmptyState } from '../../components/ui/EmptyState';
-import { useChat } from '../../hooks/useChat';
-import { useAuthStore } from '../../stores/useAuthStore';
-import { useChatStore } from '../../stores/useChatStore';
-import { colors } from '../../constants/colors';
-import { MessageCircle } from 'lucide-react-native';
+# 4. Hooks supplémentaires
+cat > src/hooks/useImagePicker.ts << 'EOL'
+import { useState } from 'react';
+import * as ImagePicker from 'expo-image-picker';
+import { Platform } from 'react-native';
 
-export const ChatScreen = () => {
-  const [showNewChat, setShowNewChat] = useState(false);
-  const { user } = useAuthStore();
-  const { chats, selectedChat, selectChat, createChat } = useChatStore();
-  const { messages, loading, send } = useChat(selectedChat?.id);
+export const useImagePicker = () => {
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-  const handleSelectChat = (chat) => {
-    selectChat(chat);
+  const requestPermission = async () => {
+    if (Platform.OS !== 'web') {
+      const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (status !== 'granted') {
+        setError('Permission to access camera roll is required!');
+        return false;
+      }
+      return true;
+    }
+    return true;
   };
 
-  const handleBack = () => {
-    selectChat(null);
-  };
-
-  const handleNewChat = async (email: string) => {
+  const pickImage = async () => {
     try {
-      await createChat(email);
-      setShowNewChat(false);
-    } catch (error) {
-      console.error('Error creating chat:', error);
+      setLoading(true);
+      setError(null);
+
+      const hasPermission = await requestPermission();
+      if (!hasPermission) return null;
+
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        allowsEditing: true,
+        aspect: [4, 3],
+        quality: 0.8,
+      });
+
+      if (!result.canceled) {
+        return result.assets[0];
+      }
+      return null;
+    } catch (err) {
+      setError(err.message);
+      return null;
+    } finally {
+      setLoading(false);
     }
   };
 
-  return (
-    <View style={styles.container}>
-      {!selectedChat ? (
-        <>
-          <ChatList
-            chats={chats}
-            onSelectChat={handleSelectChat}
-            onNewChat={() => setShowNewChat(true)}
-          />
-          {chats.length === 0 && (
-            <EmptyState
-              icon={<MessageCircle size={48} color={colors.textSecondary} />}
-              title="No conversations yet"
-              description="Start a new conversation with someone"
-            />
-          )}
-        </>
-      ) : (
-        <View style={styles.chatArea}>
-          <ChatHeader
-            name={selectedChat.name}
-            avatar={selectedChat.avatar}
-            online={selectedChat.online}
-            onBack={handleBack}
-            onOptions={() => {}}
-          />
-          <ChatArea
-            messages={messages}
-            currentUserId={user?.uid || ''}
-            onSend={send}
-            disabled={loading}
-          />
-        </View>
-      )}
-
-      <NewChatDialog
-        visible={showNewChat}
-        onClose={() => setShowNewChat(false)}
-        onSubmit={handleNewChat}
-        loading={loading}
-      />
-    </View>
-  );
-};
-
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: colors.background,
-  },
-  chatArea: {
-    flex: 1,
-  },
-});
-EOL
-
-# Hook supplémentaire pour la gestion du thème
-cat > src/hooks/useTheme.ts << 'EOL'
-import { useColorScheme } from 'react-native';
-import { useSettingsStore } from '../stores/useSettingsStore';
-
-export const useTheme = () => {
-  const systemScheme = useColorScheme();
-  const { settings } = useSettingsStore();
-
-  const isDarkMode = settings.darkMode === 'system' 
-    ? systemScheme === 'dark'
-    : settings.darkMode;
-
   return {
-    isDarkMode,
+    pickImage,
+    loading,
+    error,
   };
 };
 EOL
 
-echo -e "${GREEN}✅ Structure restante créée avec succès !${NC}"
-echo -e "${BLUE}Fichiers ajoutés/mis à jour :${NC}"
-echo "1. Types supplémentaires"
-echo "2. Utils (format.ts, validation.ts)"
-echo "3. LoginScreen complet"
-echo "4. ChatScreen complet"
-echo "5. Hook useTheme"
+cat > src/hooks/useKeyboard.ts << 'EOL'
+import { useEffect, useState } from 'react';
+import { Keyboard, KeyboardEvent, Platform } from 'react-native';
 
+export const useKeyboard = () => {
+  const [keyboardHeight, setKeyboardHeight] = useState(0);
+  const [keyboardVisible, setKeyboardVisible] = useState(false);
+
+  useEffect(() => {
+    const showListener = Keyboard.addListener(
+      Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow',
+      (e: KeyboardEvent) => {
+        setKeyboardHeight(e.endCoordinates.height);
+        setKeyboardVisible(true);
+      }
+    );
+
+    const hideListener = Keyboard.addListener(
+      Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide',
+      () => {
+        setKeyboardHeight(0);
+        setKeyboardVisible(false);
+      }
+    );
+
+    return () => {
+      showListener.remove();
+      hideListener.remove();
+    };
+  }, []);
+
+  return {
+    keyboardHeight,
+    keyboardVisible,
+  };
+};
+EOL
+
+# 5. Utils supplémentaires
+cat > src/utils/file.ts << 'EOL'
+export const formatFileSize = (bytes: number): string => {
+  if (bytes === 0) return '0 Bytes';
+
+  const sizes = ['Bytes', 'KB', 'MB', 'GB', 'TB'];
+  const i = Math.floor(Math.log(bytes) / Math.log(1024));
+  return `${parseFloat((bytes / Math.pow(1024, i)).toFixed(2))} ${sizes[i]}`;
+};
+
+export const getFileExtension = (filename: string): string => {
+  return filename.slice(((filename.lastIndexOf(".") - 1) >>> 0) + 2);
+};
+
+export const isImageFile = (filename: string): boolean => {
+  const ext = getFileExtension(filename).toLowerCase();
+  return ['jpg', 'jpeg', 'png', 'gif', 'webp'].includes(ext);
+};
+EOL
+
+cat > src/utils/error.ts << 'EOL'
+export const getFirebaseErrorMessage = (error: any): string => {
+  const code = error?.code || '';
+  
+  switch (code) {
+    case 'auth/invalid-email':
+      return 'Invalid email address';
+    case 'auth/user-disabled':
+      return 'User account has been disabled';
+    case 'auth/user-not-found':
+      return 'User not found';
+    case 'auth/wrong-password':
+      return 'Invalid password';
+    case 'auth/email-already-in-use':
+      return 'Email already in use';
+    case 'auth/weak-password':
+      return 'Password is too weak';
+    default:
+      return error?.message || 'An unknown error occurred';
+  }
+};
+EOL
+
+# 6. Dossier pour les tests
+mkdir -p src/__tests__/{components,hooks,stores}
+
+cat > src/__tests__/jest.setup.ts << 'EOL'
+import '@testing-library/jest-native/extend-expect';
+
+jest.mock('react-native/Libraries/Animated/NativeAnimatedHelper');
+jest.mock('@react-native-async-storage/async-storage', () => ({
+  setItem: jest.fn(),
+  getItem: jest.fn(),
+  removeItem: jest.fn(),
+}));
+EOL
+
+echo -e "${GREEN}✅ Fichiers complémentaires créés avec succès !${NC}"
 git add .
-git commit -m "feat: Complete remaining structure and components"
+git commit -m "feat: Add supplementary files for complete conversion"
