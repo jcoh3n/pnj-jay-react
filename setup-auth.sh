@@ -5,233 +5,260 @@ GREEN='\033[0;32m'
 BLUE='\033[0;34m'
 NC='\033[0m'
 
-echo -e "${BLUE}Configuration des services de base de données et hooks...${NC}"
+echo -e "${BLUE}Configuration des fichiers et composants manquants...${NC}"
 
-# Création des dossiers nécessaires
-mkdir -p src/hooks src/services/api
+# Types supplémentaires
+cat > src/types/index.ts << 'EOL'
+export interface User {
+  uid: string;
+  email: string | null;
+  displayName: string | null;
+  photoURL: string | null;
+}
 
-# Configuration du service de base de données
-cat > src/services/api/database.ts << 'EOL'
-import { database } from '../firebase/config';
-import { ref, onValue, off, get, query, orderByChild, equalTo } from 'firebase/database';
-import type { Chat, Message } from '../../types';
+export interface Chat {
+  id: string;
+  name: string;
+  avatar?: string;
+  lastMessage?: string;
+  lastMessageTime: string;
+  participants: Record<string, boolean>;
+  online?: boolean;
+  unreadCount: number;
+}
 
-export const subscribeToChats = (
-  userId: string,
-  onUpdate: (chats: Chat[]) => void,
-  onError: (error: Error) => void
-) => {
-  const chatsRef = ref(database, 'chats');
+export interface Message {
+  id: string;
+  content: string;
+  sender: string;
+  timestamp: string;
+  status: 'sent' | 'delivered' | 'read';
+}
+EOL
+
+# Utils
+mkdir -p src/utils
+
+cat > src/utils/format.ts << 'EOL'
+import { format, isToday, isYesterday } from 'date-fns';
+
+export const formatTime = (date: string | Date) => {
+  const messageDate = new Date(date);
   
-  const unsubscribe = onValue(chatsRef, 
-    async (snapshot) => {
-      try {
-        const chatsData = snapshot.val();
-        if (!chatsData) {
-          onUpdate([]);
-          return;
-        }
-
-        const chats: Chat[] = [];
-        
-        for (const [chatId, chat] of Object.entries<any>(chatsData)) {
-          if (chat.participants?.[userId]) {
-            // Get other participant info
-            const otherParticipantId = Object.keys(chat.participants)
-              .find(id => id !== userId);
-
-            if (otherParticipantId) {
-              const userRef = ref(database, `users/${otherParticipantId}`);
-              const userSnapshot = await get(userRef);
-              const userData = userSnapshot.val();
-
-              if (userData) {
-                chats.push({
-                  id: chatId,
-                  name: userData.displayName || userData.email,
-                  avatar: userData.photoURL,
-                  lastMessage: chat.lastMessage?.content || '',
-                  lastMessageTime: chat.lastMessage?.timestamp || chat.createdAt,
-                  participants: chat.participants,
-                  online: !!userData.lastActive && 
-                    (Date.now() - new Date(userData.lastActive).getTime()) < 300000,
-                  unreadCount: 0,
-                });
-              }
-            }
-          }
-        }
-
-        onUpdate(chats);
-      } catch (error) {
-        onError(error as Error);
-      }
-    },
-    (error) => onError(error as Error)
-  );
-
-  return () => off(chatsRef, 'value');
-};
-
-export const subscribeToMessages = (
-  chatId: string,
-  onUpdate: (messages: Message[]) => void,
-  onError: (error: Error) => void
-) => {
-  const messagesRef = ref(database, `messages/${chatId}`);
-  
-  const unsubscribe = onValue(messagesRef, 
-    (snapshot) => {
-      const messagesData = snapshot.val();
-      if (!messagesData) {
-        onUpdate([]);
-        return;
-      }
-
-      const messages = Object.values(messagesData) as Message[];
-      onUpdate(messages.sort((a, b) => 
-        new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
-      ));
-    },
-    (error) => onError(error as Error)
-  );
-
-  return () => off(messagesRef, 'value');
-};
-
-export const getUserByEmail = async (email: string) => {
-  const usersRef = ref(database, 'users');
-  const emailQuery = query(usersRef, orderByChild('email'), equalTo(email));
-  const snapshot = await get(emailQuery);
-  
-  if (!snapshot.exists()) {
-    throw new Error('User not found');
+  if (isToday(messageDate)) {
+    return format(messageDate, 'HH:mm');
   }
-
-  const userData = snapshot.val();
-  const userId = Object.keys(userData)[0];
-  return { ...userData[userId], id: userId };
+  
+  if (isYesterday(messageDate)) {
+    return 'Yesterday';
+  }
+  
+  return format(messageDate, 'dd/MM/yyyy');
 };
 EOL
 
-# Hooks personnalisés
-cat > src/hooks/useChat.ts << 'EOL'
-import { useEffect, useState } from 'react';
-import { subscribeToChats, subscribeToMessages } from '../services/api/database';
-import { useChatStore } from '../stores/useChatStore';
-import { useAuthStore } from '../stores/useAuthStore';
-import type { Message } from '../types';
+cat > src/utils/validation.ts << 'EOL'
+export const validateEmail = (email: string): boolean => {
+  const regex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  return regex.test(email);
+};
 
-export const useChat = (chatId?: string) => {
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<Error | null>(null);
-  const [messages, setMessages] = useState<Message[]>([]);
+export const validatePassword = (password: string): boolean => {
+  return password.length >= 6;
+};
+EOL
 
-  const { user } = useAuthStore();
-  const { sendMessage, updateMessageStatus } = useChatStore();
+# Mettre à jour LoginScreen
+cat > src/screens/auth/LoginScreen.tsx << 'EOL'
+import React from 'react';
+import { View, StyleSheet, KeyboardAvoidingView, Platform } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import { LoginForm } from '../../components/auth/LoginForm';
+import { colors } from '../../constants/colors';
+import { useAuthStore } from '../../stores/useAuthStore';
+import type { NativeStackScreenProps } from '@react-navigation/native-stack';
+import type { RootStackParamList } from '../../types/navigation';
 
-  useEffect(() => {
-    if (!chatId || !user) return;
+type Props = NativeStackScreenProps<RootStackParamList, 'Login'>;
 
-    setLoading(true);
-    const unsubscribe = subscribeToMessages(
-      chatId,
-      (newMessages) => {
-        setMessages(newMessages);
-        setLoading(false);
-      },
-      (error) => {
-        setError(error);
-        setLoading(false);
-      }
-    );
+export const LoginScreen = ({ navigation }: Props) => {
+  const { login, register, loading, error } = useAuthStore();
 
-    return () => unsubscribe();
-  }, [chatId, user]);
-
-  const send = async (content: string) => {
-    if (!chatId || !user) {
-      throw new Error('Cannot send message: Missing chat ID or user');
-    }
-
+  const handleSubmit = async ({
+    email,
+    password,
+    isRegistering,
+  }: {
+    email: string;
+    password: string;
+    isRegistering: boolean;
+  }) => {
     try {
-      await sendMessage(chatId, content);
+      if (isRegistering) {
+        await register(email, password);
+      } else {
+        await login(email, password);
+      }
+      navigation.replace('Main');
     } catch (error) {
-      setError(error as Error);
-      throw error;
+      console.error('Authentication error:', error);
     }
   };
+
+  return (
+    <SafeAreaView style={styles.safeArea}>
+      <KeyboardAvoidingView
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        style={styles.container}
+      >
+        <View style={styles.content}>
+          <LoginForm
+            onSubmit={handleSubmit}
+            loading={loading}
+            error={error}
+          />
+        </View>
+      </KeyboardAvoidingView>
+    </SafeAreaView>
+  );
+};
+
+const styles = StyleSheet.create({
+  safeArea: {
+    flex: 1,
+    backgroundColor: colors.background,
+  },
+  container: {
+    flex: 1,
+  },
+  content: {
+    flex: 1,
+    justifyContent: 'center',
+    padding: 16,
+  },
+});
+EOL
+
+# Mise à jour du ChatScreen complet
+cat > src/screens/chat/ChatScreen.tsx << 'EOL'
+import React, { useEffect, useState } from 'react';
+import { View, StyleSheet } from 'react-native';
+import { ChatList } from '../../components/chat/ChatList';
+import { ChatArea } from '../../components/chat/ChatArea';
+import { ChatHeader } from '../../components/chat/ChatHeader';
+import { NewChatDialog } from '../../components/chat/NewChatDialog';
+import { EmptyState } from '../../components/ui/EmptyState';
+import { useChat } from '../../hooks/useChat';
+import { useAuthStore } from '../../stores/useAuthStore';
+import { useChatStore } from '../../stores/useChatStore';
+import { colors } from '../../constants/colors';
+import { MessageCircle } from 'lucide-react-native';
+
+export const ChatScreen = () => {
+  const [showNewChat, setShowNewChat] = useState(false);
+  const { user } = useAuthStore();
+  const { chats, selectedChat, selectChat, createChat } = useChatStore();
+  const { messages, loading, send } = useChat(selectedChat?.id);
+
+  const handleSelectChat = (chat) => {
+    selectChat(chat);
+  };
+
+  const handleBack = () => {
+    selectChat(null);
+  };
+
+  const handleNewChat = async (email: string) => {
+    try {
+      await createChat(email);
+      setShowNewChat(false);
+    } catch (error) {
+      console.error('Error creating chat:', error);
+    }
+  };
+
+  return (
+    <View style={styles.container}>
+      {!selectedChat ? (
+        <>
+          <ChatList
+            chats={chats}
+            onSelectChat={handleSelectChat}
+            onNewChat={() => setShowNewChat(true)}
+          />
+          {chats.length === 0 && (
+            <EmptyState
+              icon={<MessageCircle size={48} color={colors.textSecondary} />}
+              title="No conversations yet"
+              description="Start a new conversation with someone"
+            />
+          )}
+        </>
+      ) : (
+        <View style={styles.chatArea}>
+          <ChatHeader
+            name={selectedChat.name}
+            avatar={selectedChat.avatar}
+            online={selectedChat.online}
+            onBack={handleBack}
+            onOptions={() => {}}
+          />
+          <ChatArea
+            messages={messages}
+            currentUserId={user?.uid || ''}
+            onSend={send}
+            disabled={loading}
+          />
+        </View>
+      )}
+
+      <NewChatDialog
+        visible={showNewChat}
+        onClose={() => setShowNewChat(false)}
+        onSubmit={handleNewChat}
+        loading={loading}
+      />
+    </View>
+  );
+};
+
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+    backgroundColor: colors.background,
+  },
+  chatArea: {
+    flex: 1,
+  },
+});
+EOL
+
+# Hook supplémentaire pour la gestion du thème
+cat > src/hooks/useTheme.ts << 'EOL'
+import { useColorScheme } from 'react-native';
+import { useSettingsStore } from '../stores/useSettingsStore';
+
+export const useTheme = () => {
+  const systemScheme = useColorScheme();
+  const { settings } = useSettingsStore();
+
+  const isDarkMode = settings.darkMode === 'system' 
+    ? systemScheme === 'dark'
+    : settings.darkMode;
 
   return {
-    messages,
-    loading,
-    error,
-    send,
+    isDarkMode,
   };
 };
 EOL
 
-cat > src/hooks/useOnlineStatus.ts << 'EOL'
-import { useEffect } from 'react';
-import { ref, onDisconnect, set, serverTimestamp } from 'firebase/database';
-import { database } from '../services/firebase/config';
-import { useAuthStore } from '../stores/useAuthStore';
-
-export const useOnlineStatus = () => {
-  const { user } = useAuthStore();
-
-  useEffect(() => {
-    if (!user) return;
-
-    const userStatusRef = ref(database, `users/${user.uid}/lastActive`);
-    const connectedRef = ref(database, '.info/connected');
-
-    const unsubscribe = onDisconnect(userStatusRef).set(serverTimestamp());
-
-    set(userStatusRef, serverTimestamp());
-
-    return () => {
-      unsubscribe();
-    };
-  }, [user]);
-};
-EOL
-
-cat > src/hooks/useAppState.ts << 'EOL'
-import { useEffect } from 'react';
-import { AppState, Platform } from 'react-native';
-import { ref, set, serverTimestamp } from 'firebase/database';
-import { database } from '../services/firebase/config';
-import { useAuthStore } from '../stores/useAuthStore';
-
-export const useAppState = () => {
-  const { user } = useAuthStore();
-
-  useEffect(() => {
-    if (!user) return;
-
-    const subscription = AppState.addEventListener('change', (nextAppState) => {
-      const isActive = Platform.OS === 'ios' 
-        ? nextAppState === 'active'
-        : nextAppState.match(/active/);
-
-      if (user) {
-        const userStatusRef = ref(database, `users/${user.uid}/lastActive`);
-        set(userStatusRef, isActive ? serverTimestamp() : new Date().toISOString());
-      }
-    });
-
-    return () => {
-      subscription.remove();
-    };
-  }, [user]);
-};
-EOL
-
-echo -e "${BLUE}Points à vérifier :${NC}"
-echo "1. Configurer ces règles dans la console Firebase"
-echo "2. Mettre à jour les composants pour utiliser les nouveaux hooks"
-echo "3. Tester la synchronisation en temps réel"
+echo -e "${GREEN}✅ Structure restante créée avec succès !${NC}"
+echo -e "${BLUE}Fichiers ajoutés/mis à jour :${NC}"
+echo "1. Types supplémentaires"
+echo "2. Utils (format.ts, validation.ts)"
+echo "3. LoginScreen complet"
+echo "4. ChatScreen complet"
+echo "5. Hook useTheme"
 
 git add .
-git commit -m "feat: Add database services and real-time sync hooks"
+git commit -m "feat: Complete remaining structure and components"

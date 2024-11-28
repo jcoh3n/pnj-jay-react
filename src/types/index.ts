@@ -5,14 +5,6 @@ export interface User {
   photoURL: string | null;
 }
 
-export interface Message {
-  id: string;
-  content: string;
-  sender: string;
-  timestamp: string;
-  status: 'sent' | 'delivered' | 'read';
-}
-
 export interface Chat {
   id: string;
   name: string;
@@ -22,4 +14,12 @@ export interface Chat {
   participants: Record<string, boolean>;
   online?: boolean;
   unreadCount: number;
+}
+
+export interface Message {
+  id: string;
+  content: string;
+  sender: string;
+  timestamp: string;
+  status: 'sent' | 'delivered' | 'read';
 }

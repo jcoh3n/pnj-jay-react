@@ -4,36 +4,18 @@ import { ChatList } from '../../components/chat/ChatList';
 import { ChatArea } from '../../components/chat/ChatArea';
 import { ChatHeader } from '../../components/chat/ChatHeader';
 import { NewChatDialog } from '../../components/chat/NewChatDialog';
-import { useChatStore } from '../../stores/useChatStore';
+import { EmptyState } from '../../components/ui/EmptyState';
+import { useChat } from '../../hooks/useChat';
 import { useAuthStore } from '../../stores/useAuthStore';
+import { useChatStore } from '../../stores/useChatStore';
 import { colors } from '../../constants/colors';
+import { MessageCircle } from 'lucide-react-native';
 
 export const ChatScreen = () => {
   const [showNewChat, setShowNewChat] = useState(false);
   const { user } = useAuthStore();
-  const {
-    chats,
-    messages,
-    selectedChat,
-    loading,
-    loadChats,
-    selectChat,
-    createChat,
-    sendMessage,
-    subscribeToMessages,
-    unsubscribeFromMessages,
-  } = useChatStore();
-
-  useEffect(() => {
-    loadChats();
-  }, []);
-
-  useEffect(() => {
-    if (selectedChat) {
-      subscribeToMessages(selectedChat.id);
-      return () => unsubscribeFromMessages(selectedChat.id);
-    }
-  }, [selectedChat?.id]);
+  const { chats, selectedChat, selectChat, createChat } = useChatStore();
+  const { messages, loading, send } = useChat(selectedChat?.id);
 
   const handleSelectChat = (chat) => {
     selectChat(chat);
@@ -44,19 +26,32 @@ export const ChatScreen = () => {
   };
 
   const handleNewChat = async (email: string) => {
-    await createChat(email);
-    setShowNewChat(false);
-  };
-
-  const handleSendMessage = (content: string) => {
-    if (selectedChat) {
-      sendMessage(selectedChat.id, content);
+    try {
+      await createChat(email);
+      setShowNewChat(false);
+    } catch (error) {
+      console.error('Error creating chat:', error);
     }
   };
 
   return (
     <View style={styles.container}>
-      {selectedChat ? (
+      {!selectedChat ? (
+        <>
+          <ChatList
+            chats={chats}
+            onSelectChat={handleSelectChat}
+            onNewChat={() => setShowNewChat(true)}
+          />
+          {chats.length === 0 && (
+            <EmptyState
+              icon={<MessageCircle size={48} color={colors.textSecondary} />}
+              title="No conversations yet"
+              description="Start a new conversation with someone"
+            />
+          )}
+        </>
+      ) : (
         <View style={styles.chatArea}>
           <ChatHeader
             name={selectedChat.name}
@@ -66,18 +61,12 @@ export const ChatScreen = () => {
             onOptions={() => {}}
           />
           <ChatArea
-            messages={messages[selectedChat.id] || []}
+            messages={messages}
             currentUserId={user?.uid || ''}
-            onSend={handleSendMessage}
+            onSend={send}
             disabled={loading}
           />
         </View>
-      ) : (
-        <ChatList
-          chats={chats}
-          onSelectChat={handleSelectChat}
-          onNewChat={() => setShowNewChat(true)}
-        />
       )}
 
       <NewChatDialog
