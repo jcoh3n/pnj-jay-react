@@ -1,10 +1,11 @@
-import React, { useEffect, useState } from 'react';
+// src/screens/chat/ChatScreen.tsx
+import React, { useState } from 'react';
 import { View, StyleSheet } from 'react-native';
 import { ChatList } from '../../components/chat/ChatList';
 import { ChatArea } from '../../components/chat/ChatArea';
 import { ChatHeader } from '../../components/chat/ChatHeader';
-import { NewChatDialog } from '../../components/chat/NewChatDialog';
-import { EmptyState } from '../../components/ui/EmptyState';
+import { Message } from '../../components/chat/Message';
+import { Modal } from '../../components/ui/Modal';
 import { useChat } from '../../hooks/useChat';
 import { useAuthStore } from '../../stores/useAuthStore';
 import { useChatStore } from '../../stores/useChatStore';
