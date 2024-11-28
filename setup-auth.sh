@@ -5,88 +5,56 @@ GREEN='\033[0;32m'
 BLUE='\033[0;34m'
 NC='\033[0m'
 
-echo -e "${BLUE}Configuration de la logique de chat...${NC}"
+echo -e "${BLUE}Configuration des services de base de données et hooks...${NC}"
 
-# Store de chat
-cat > src/stores/useChatStore.ts << 'EOL'
-import { create } from 'zustand';
-import {
-  ref,
-  push,
-  onValue,
-  off,
-  get,
-  query,
-  orderByChild,
-  equalTo,
-  set,
-} from 'firebase/database';
-import { database } from '../services/firebase/config';
-import { useAuthStore } from './useAuthStore';
-import type { Chat, Message } from '../types';
+# Création des dossiers nécessaires
+mkdir -p src/hooks src/services/api
 
-interface ChatState {
-  chats: Chat[];
-  messages: Record<string, Message[]>;
-  selectedChat: Chat | null;
-  loading: boolean;
-  error: string | null;
-  loadChats: () => Promise<void>;
-  selectChat: (chat: Chat | null) => void;
-  createChat: (recipientEmail: string) => Promise<void>;
-  sendMessage: (chatId: string, content: string) => Promise<void>;
-  subscribeToMessages: (chatId: string) => void;
-  unsubscribeFromMessages: (chatId: string) => void;
-  cleanup: () => void;
-}
+# Configuration du service de base de données
+cat > src/services/api/database.ts << 'EOL'
+import { database } from '../firebase/config';
+import { ref, onValue, off, get, query, orderByChild, equalTo } from 'firebase/database';
+import type { Chat, Message } from '../../types';
 
-export const useChatStore = create<ChatState>((set, get) => ({
-  chats: [],
-  messages: {},
-  selectedChat: null,
-  loading: false,
-  error: null,
-
-  loadChats: async () => {
-    const { user } = useAuthStore.getState();
-    if (!user) return;
-
-    set({ loading: true, error: null });
-    try {
-      const chatsRef = ref(database, 'chats');
-      
-      // Setup realtime listener for chats
-      onValue(chatsRef, async (snapshot) => {
+export const subscribeToChats = (
+  userId: string,
+  onUpdate: (chats: Chat[]) => void,
+  onError: (error: Error) => void
+) => {
+  const chatsRef = ref(database, 'chats');
+  
+  const unsubscribe = onValue(chatsRef, 
+    async (snapshot) => {
+      try {
         const chatsData = snapshot.val();
         if (!chatsData) {
-          set({ chats: [], loading: false });
+          onUpdate([]);
           return;
         }
 
-        const loadedChats: Chat[] = [];
+        const chats: Chat[] = [];
         
         for (const [chatId, chat] of Object.entries<any>(chatsData)) {
-          if (chat.participants?.[user.uid]) {
-            // Find the other participant
+          if (chat.participants?.[userId]) {
+            // Get other participant info
             const otherParticipantId = Object.keys(chat.participants)
-              .find(id => id !== user.uid);
+              .find(id => id !== userId);
 
             if (otherParticipantId) {
-              // Get other participant's info
               const userRef = ref(database, `users/${otherParticipantId}`);
               const userSnapshot = await get(userRef);
               const userData = userSnapshot.val();
 
               if (userData) {
-                loadedChats.push({
+                chats.push({
                   id: chatId,
                   name: userData.displayName || userData.email,
-                  avatar: userData.photoURL || `https://ui-avatars.com/api/?name=${userData.displayName || 'User'}`,
+                  avatar: userData.photoURL,
                   lastMessage: chat.lastMessage?.content || '',
                   lastMessageTime: chat.lastMessage?.timestamp || chat.createdAt,
+                  participants: chat.participants,
                   online: !!userData.lastActive && 
                     (Date.now() - new Date(userData.lastActive).getTime()) < 300000,
-                  participants: chat.participants,
                   unreadCount: 0,
                 });
               }
@@ -94,292 +62,176 @@ export const useChatStore = create<ChatState>((set, get) => ({
           }
         }
 
-        set({
-          chats: loadedChats.sort((a, b) => 
-            new Date(b.lastMessageTime).getTime() - new Date(a.lastMessageTime).getTime()
-          ),
-          loading: false,
-        });
-      });
-    } catch (error) {
-      set({ error: (error as Error).message, loading: false });
-    }
-  },
-
-  selectChat: (chat) => {
-    set({ selectedChat: chat });
-  },
-
-  createChat: async (recipientEmail) => {
-    const { user } = useAuthStore.getState();
-    if (!user) throw new Error('Must be logged in to create chat');
-
-    set({ loading: true, error: null });
-    try {
-      // Find recipient by email
-      const usersRef = ref(database, 'users');
-      const emailQuery = query(usersRef, orderByChild('email'), equalTo(recipientEmail));
-      const snapshot = await get(emailQuery);
-      
-      if (!snapshot.exists()) {
-        throw new Error('User not found');
+        onUpdate(chats);
+      } catch (error) {
+        onError(error as Error);
       }
-
-      const recipientData = snapshot.val();
-      const recipientId = Object.keys(recipientData)[0];
-
-      if (recipientId === user.uid) {
-        throw new Error('Cannot create chat with yourself');
-      }
-
-      // Check if chat already exists
-      const chatsRef = ref(database, 'chats');
-      const chatsSnapshot = await get(chatsRef);
-      const chatsData = chatsSnapshot.val();
-
-      let existingChatId = null;
-      if (chatsData) {
-        existingChatId = Object.entries(chatsData).find(([_, chat]: [string, any]) => 
-          chat.participants?.[user.uid] && chat.participants?.[recipientId]
-        )?.[0];
-      }
-
-      if (existingChatId) {
-        throw new Error('Chat already exists');
-      }
-
-      // Create new chat
-      const newChatRef = push(chatsRef);
-      await set(newChatRef, {
-        createdAt: new Date().toISOString(),
-        participants: {
-          [user.uid]: true,
-          [recipientId]: true,
-        },
-      });
-
-      set({ loading: false });
-    } catch (error) {
-      set({ error: (error as Error).message, loading: false });
-      throw error;
-    }
-  },
-
-  sendMessage: async (chatId, content) => {
-    const { user } = useAuthStore.getState();
-    if (!user) throw new Error('Must be logged in to send messages');
-
-    try {
-      const messagesRef = ref(database, `messages/${chatId}`);
-      const newMessageRef = push(messagesRef);
-      
-      const message = {
-        id: newMessageRef.key,
-        content,
-        sender: user.uid,
-        timestamp: new Date().toISOString(),
-        status: 'sent',
-      };
-
-      await set(newMessageRef, message);
-
-      // Update last message in chat
-      const chatRef = ref(database, `chats/${chatId}/lastMessage`);
-      await set(chatRef, {
-        content,
-        timestamp: message.timestamp,
-        sender: user.uid,
-      });
-    } catch (error) {
-      set({ error: (error as Error).message });
-      throw error;
-    }
-  },
-
-  subscribeToMessages: (chatId) => {
-    const messagesRef = ref(database, `messages/${chatId}`);
-    
-    onValue(messagesRef, (snapshot) => {
-      const messagesData = snapshot.val();
-      const messages = messagesData 
-        ? Object.values(messagesData)
-        : [];
-      
-      set(state => ({
-        messages: {
-          ...state.messages,
-          [chatId]: messages as Message[],
-        },
-      }));
-    });
-  },
-
-  unsubscribeFromMessages: (chatId) => {
-    const messagesRef = ref(database, `messages/${chatId}`);
-    off(messagesRef);
-  },
-
-  cleanup: () => {
-    // Remove all listeners
-    const { chats } = get();
-    chats.forEach(chat => {
-      const messagesRef = ref(database, `messages/${chat.id}`);
-      off(messagesRef);
-    });
-
-    const chatsRef = ref(database, 'chats');
-    off(chatsRef);
-
-    set({
-      chats: [],
-      messages: {},
-      selectedChat: null,
-      loading: false,
-      error: null,
-    });
-  },
-}));
-EOL
-
-# Mise à jour du ChatScreen
-cat > src/screens/chat/ChatScreen.tsx << 'EOL'
-import React, { useEffect, useState } from 'react';
-import { View, StyleSheet } from 'react-native';
-import { ChatList } from '../../components/chat/ChatList';
-import { ChatArea } from '../../components/chat/ChatArea';
-import { ChatHeader } from '../../components/chat/ChatHeader';
-import { NewChatDialog } from '../../components/chat/NewChatDialog';
-import { useChatStore } from '../../stores/useChatStore';
-import { useAuthStore } from '../../stores/useAuthStore';
-import { colors } from '../../constants/colors';
-
-export const ChatScreen = () => {
-  const [showNewChat, setShowNewChat] = useState(false);
-  const { user } = useAuthStore();
-  const {
-    chats,
-    messages,
-    selectedChat,
-    loading,
-    loadChats,
-    selectChat,
-    createChat,
-    sendMessage,
-    subscribeToMessages,
-    unsubscribeFromMessages,
-  } = useChatStore();
-
-  useEffect(() => {
-    loadChats();
-  }, []);
-
-  useEffect(() => {
-    if (selectedChat) {
-      subscribeToMessages(selectedChat.id);
-      return () => unsubscribeFromMessages(selectedChat.id);
-    }
-  }, [selectedChat?.id]);
-
-  const handleSelectChat = (chat) => {
-    selectChat(chat);
-  };
-
-  const handleBack = () => {
-    selectChat(null);
-  };
-
-  const handleNewChat = async (email: string) => {
-    await createChat(email);
-    setShowNewChat(false);
-  };
-
-  const handleSendMessage = (content: string) => {
-    if (selectedChat) {
-      sendMessage(selectedChat.id, content);
-    }
-  };
-
-  return (
-    <View style={styles.container}>
-      {selectedChat ? (
-        <View style={styles.chatArea}>
-          <ChatHeader
-            name={selectedChat.name}
-            avatar={selectedChat.avatar}
-            online={selectedChat.online}
-            onBack={handleBack}
-            onOptions={() => {}}
-          />
-          <ChatArea
-            messages={messages[selectedChat.id] || []}
-            currentUserId={user?.uid || ''}
-            onSend={handleSendMessage}
-            disabled={loading}
-          />
-        </View>
-      ) : (
-        <ChatList
-          chats={chats}
-          onSelectChat={handleSelectChat}
-          onNewChat={() => setShowNewChat(true)}
-        />
-      )}
-
-      <NewChatDialog
-        visible={showNewChat}
-        onClose={() => setShowNewChat(false)}
-        onSubmit={handleNewChat}
-        loading={loading}
-      />
-    </View>
+    },
+    (error) => onError(error as Error)
   );
+
+  return () => off(chatsRef, 'value');
 };
 
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: colors.background,
-  },
-  chatArea: {
-    flex: 1,
-  },
-});
+export const subscribeToMessages = (
+  chatId: string,
+  onUpdate: (messages: Message[]) => void,
+  onError: (error: Error) => void
+) => {
+  const messagesRef = ref(database, `messages/${chatId}`);
+  
+  const unsubscribe = onValue(messagesRef, 
+    (snapshot) => {
+      const messagesData = snapshot.val();
+      if (!messagesData) {
+        onUpdate([]);
+        return;
+      }
+
+      const messages = Object.values(messagesData) as Message[];
+      onUpdate(messages.sort((a, b) => 
+        new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
+      ));
+    },
+    (error) => onError(error as Error)
+  );
+
+  return () => off(messagesRef, 'value');
+};
+
+export const getUserByEmail = async (email: string) => {
+  const usersRef = ref(database, 'users');
+  const emailQuery = query(usersRef, orderByChild('email'), equalTo(email));
+  const snapshot = await get(emailQuery);
+  
+  if (!snapshot.exists()) {
+    throw new Error('User not found');
+  }
+
+  const userData = snapshot.val();
+  const userId = Object.keys(userData)[0];
+  return { ...userData[userId], id: userId };
+};
 EOL
 
-# Mettre à jour les types
-cat > src/types/index.ts << 'EOL'
-export interface User {
-  uid: string;
-  email: string | null;
-  displayName: string | null;
-  photoURL: string | null;
-}
+# Hooks personnalisés
+cat > src/hooks/useChat.ts << 'EOL'
+import { useEffect, useState } from 'react';
+import { subscribeToChats, subscribeToMessages } from '../services/api/database';
+import { useChatStore } from '../stores/useChatStore';
+import { useAuthStore } from '../stores/useAuthStore';
+import type { Message } from '../types';
 
-export interface Message {
-  id: string;
-  content: string;
-  sender: string;
-  timestamp: string;
-  status: 'sent' | 'delivered' | 'read';
-}
+export const useChat = (chatId?: string) => {
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<Error | null>(null);
+  const [messages, setMessages] = useState<Message[]>([]);
 
-export interface Chat {
-  id: string;
-  name: string;
-  avatar?: string;
-  lastMessage?: string;
-  lastMessageTime: string;
-  participants: Record<string, boolean>;
-  online?: boolean;
-  unreadCount: number;
-}
+  const { user } = useAuthStore();
+  const { sendMessage, updateMessageStatus } = useChatStore();
+
+  useEffect(() => {
+    if (!chatId || !user) return;
+
+    setLoading(true);
+    const unsubscribe = subscribeToMessages(
+      chatId,
+      (newMessages) => {
+        setMessages(newMessages);
+        setLoading(false);
+      },
+      (error) => {
+        setError(error);
+        setLoading(false);
+      }
+    );
+
+    return () => unsubscribe();
+  }, [chatId, user]);
+
+  const send = async (content: string) => {
+    if (!chatId || !user) {
+      throw new Error('Cannot send message: Missing chat ID or user');
+    }
+
+    try {
+      await sendMessage(chatId, content);
+    } catch (error) {
+      setError(error as Error);
+      throw error;
+    }
+  };
+
+  return {
+    messages,
+    loading,
+    error,
+    send,
+  };
+};
 EOL
 
-echo -e "${GREEN}✅ Logique de chat configurée avec succès !${NC}"
+cat > src/hooks/useOnlineStatus.ts << 'EOL'
+import { useEffect } from 'react';
+import { ref, onDisconnect, set, serverTimestamp } from 'firebase/database';
+import { database } from '../services/firebase/config';
+import { useAuthStore } from '../stores/useAuthStore';
+
+export const useOnlineStatus = () => {
+  const { user } = useAuthStore();
+
+  useEffect(() => {
+    if (!user) return;
+
+    const userStatusRef = ref(database, `users/${user.uid}/lastActive`);
+    const connectedRef = ref(database, '.info/connected');
+
+    const unsubscribe = onDisconnect(userStatusRef).set(serverTimestamp());
+
+    set(userStatusRef, serverTimestamp());
+
+    return () => {
+      unsubscribe();
+    };
+  }, [user]);
+};
+EOL
+
+cat > src/hooks/useAppState.ts << 'EOL'
+import { useEffect } from 'react';
+import { AppState, Platform } from 'react-native';
+import { ref, set, serverTimestamp } from 'firebase/database';
+import { database } from '../services/firebase/config';
+import { useAuthStore } from '../stores/useAuthStore';
+
+export const useAppState = () => {
+  const { user } = useAuthStore();
+
+  useEffect(() => {
+    if (!user) return;
+
+    const subscription = AppState.addEventListener('change', (nextAppState) => {
+      const isActive = Platform.OS === 'ios' 
+        ? nextAppState === 'active'
+        : nextAppState.match(/active/);
+
+      if (user) {
+        const userStatusRef = ref(database, `users/${user.uid}/lastActive`);
+        set(userStatusRef, isActive ? serverTimestamp() : new Date().toISOString());
+      }
+    });
+
+    return () => {
+      subscription.remove();
+    };
+  }, [user]);
+};
+EOL
+
 echo -e "${BLUE}Points à vérifier :${NC}"
-echo "1. Les variables d'environnement Firebase sont configurées"
-echo "2. Les règles de sécurité Firebase sont configurées correctement"
-echo "3. La navigation est bien configurée pour accéder au ChatScreen"
+echo "1. Configurer ces règles dans la console Firebase"
+echo "2. Mettre à jour les composants pour utiliser les nouveaux hooks"
+echo "3. Tester la synchronisation en temps réel"
 
 git add .
-git commit -m "feat: Add chat logic with Firebase integration"
+git commit -m "feat: Add database services and real-time sync hooks"
