@@ -1,3 +1,4 @@
+// src/navigation/index.tsx
 import React from 'react';
 import { NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
@@ -12,7 +13,7 @@ import { ChatScreen } from '../screens/chat/ChatScreen';
 import { SettingsScreen } from '../screens/settings/SettingsScreen';
 
 // Types
-import { RootStackParamList, MainTabParamList } from '../types/navigation';
+import type { RootStackParamList, MainTabParamList } from '../types/navigation';
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
 const Tab = createBottomTabNavigator<MainTabParamList>();
@@ -27,10 +28,7 @@ const MainTabs = () => {
         },
         tabBarActiveTintColor: colors.primary,
         tabBarInactiveTintColor: colors.textSecondary,
-        headerStyle: {
-          backgroundColor: colors.surface,
-        },
-        headerTintColor: colors.text,
+        headerShown: false, // Hide the header for tab screens
       }}
     >
       <Tab.Screen
@@ -59,12 +57,17 @@ export const Navigation = () => {
   const { user, initialized } = useAuthStore();
 
   if (!initialized) {
-    return null; // Or a loading screen
+    return null;
   }
 
   return (
     <NavigationContainer>
-      <Stack.Navigator screenOptions={{ headerShown: false }}>
+      <Stack.Navigator 
+        screenOptions={{ 
+          headerShown: false,
+          animation: 'fade' 
+        }}
+      >
         {!user ? (
           <Stack.Screen name="Login" component={LoginScreen} />
         ) : (

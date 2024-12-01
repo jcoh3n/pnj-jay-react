@@ -1,3 +1,4 @@
+// src/screens/auth/LoginScreen.tsx
 import React from 'react';
 import { View, StyleSheet, KeyboardAvoidingView, Platform } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -27,7 +28,7 @@ export const LoginScreen = ({ navigation }: Props) => {
       } else {
         await login(email, password);
       }
-      navigation.replace('Main');
+      // Don't use navigation.replace here, let the Navigation component handle the routing
     } catch (error) {
       console.error('Authentication error:', error);
     }
