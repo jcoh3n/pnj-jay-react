@@ -28,6 +28,7 @@
     "plugins": [
       "expo-image-picker",
       "expo-notifications"
-    ]
+    ],
+    "newArchEnabled": true
   }
 }

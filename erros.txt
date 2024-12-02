@@ -1,0 +1,41 @@
+Expected 0 arguments, but got 1.ts(2554)
+
+⚠ Error(TS2554)  | 
+
+Expected 0 arguments, but got 1.
+
+⚠ Error (TS80007) | 
+
+await
+
+ has no effect on the type of this expression.
+
+const userRef: DatabaseReferenceProperty 'val' does not exist on type 'AuthState'.ts(2339)
+
+⚠ Error (TS2339)  | 
+
+Property val does not exist on type 
+
+AuthState
+
+ .
+
+anyo overload matches this call. Overload 1 of 2, '(partial: AuthState | Partial<AuthState> | ((state: AuthState) => AuthState | Partial<AuthState>), replace?: false | undefined): void', gave the following error. Argument of type 'DatabaseReference' is not assignable to parameter of type 'AuthState | Partial<AuthState> | ((state: AuthState) => AuthState | Partial<AuthState>)'. Overload 2 of 2, '(state: AuthState | ((state: AuthState) => AuthState), replace: true): void', gave the following error. Argument of type 'DatabaseReference' is not assignable to parameter of type 'AuthState | ((state: AuthState) => AuthStatepected 0 arguments, but got 1.ts(2554)
+
+⚠ Error(TS2554)  | 
+
+Expected 0 arguments, but got 1.
+
+⚠ Error (TS80007) | 
+
+await
+
+ has no effect on the type of this expressionProperty 'val' does not exist on type 'AuthState'.ts(2339)
+
+⚠ Error (TS2339)  | 
+
+Property val does not exist on type 
+
+AuthState
+
+ .

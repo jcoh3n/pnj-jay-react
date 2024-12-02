@@ -1,20 +1,18 @@
-import React, { useEffect } from 'react';
+import React from 'react';
 import { View, ScrollView, StyleSheet } from 'react-native';
-import { Bell, Moon, Globe, Volume2, Shield, User, LogOut } from 'lucide-react-native';
+import { Bell, Moon, Globe, Volume2, Shield, LogOut } from 'lucide-react-native';
+import { ProfileSection } from '../../components/settings/ProfileSection';
 import { SettingsGroup } from '../../components/settings/SettingsGroup';
 import { SettingsItem } from '../../components/settings/SettingsItem';
 import { Button } from '../../components/ui/Button';
 import { useSettingsStore } from '../../stores/useSettingsStore';
 import { useAuthStore } from '../../stores/useAuthStore';
 import { colors } from '../../constants/colors';
+import { SafeAreaView } from 'react-native-safe-area-context';
 
 export const SettingsScreen = () => {
-  const { settings, loadSettings, updateSettings } = useSettingsStore();
-  const { user, logout } = useAuthStore();
-
-  useEffect(() => {
-    loadSettings();
-  }, []);
+  const { settings, updateSettings } = useSettingsStore();
+  const { logout } = useAuthStore();
 
   const handleLogout = async () => {
     try {
@@ -25,15 +23,9 @@ export const SettingsScreen = () => {
   };
 
   return (
-    <View style={styles.container}>
+    <SafeAreaView style={styles.container} edges={['top']}>
       <ScrollView contentContainerStyle={styles.content}>
-        <SettingsGroup title="Profile">
-          <SettingsItem
-            icon={<User size={24} color={colors.text} />}
-            title={user?.displayName || 'User'}
-            description={user?.email || ''}
-          />
-        </SettingsGroup>
+        <ProfileSection />
 
         <SettingsGroup title="Notifications" description="Manage your notification preferences">
           <SettingsItem
@@ -80,13 +72,15 @@ export const SettingsScreen = () => {
           />
         </SettingsGroup>
 
-        <Button
-          title="Log Out"
-          onPress={handleLogout}
-          variant="secondary"
-        />
+        <View style={styles.logoutContainer}>
+          <Button
+            title="Log Out"
+            onPress={handleLogout}
+            variant="secondary"
+          />
+        </View>
       </ScrollView>
-    </View>
+    </SafeAreaView>
   );
 };
 
