@@ -1,74 +1,42 @@
-import React, { useState, useEffect } from 'react';
-import { View, StyleSheet } from 'react-native';
-import { User, AlertCircle } from 'lucide-react-native';
-import { SettingsGroup } from './SettingsGroup';
-import { SettingsItem } from './SettingsItem';
-import { ProfilePhoto } from './ProfilePhoto';
-import { PhotoManagementModal } from './PhotoManagementModal';
-import { Modal } from '../ui/Modal';
-import { Input } from '../ui/Input';
-import { Button } from '../ui/Button';
+import React, { useState } from 'react';
+import { View, Text, TouchableOpacity, Image, StyleSheet } from 'react-native';
+import { User, Mail } from 'lucide-react-native';
+import { UnifiedProfileModal } from './UnifiedProfileModal';
 import { colors } from '../../constants/colors';
 import { useAuthStore } from '../../stores/useAuthStore';
-import { useImagePicker } from '../../hooks/useImagePicker';
 import * as ImagePicker from 'expo-image-picker';
-
-interface EditProfileData {
-  displayName: string;
-  status: string;
-}
 
 export const ProfileSection = () => {
   const { user, updateProfile } = useAuthStore();
-  const { pickImage } = useImagePicker();
-  
-  // États
-  const [isEditing, setIsEditing] = useState(false);
-  const [showPhotoModal, setShowPhotoModal] = useState(false);
+  const [showModal, setShowModal] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  
-  const [profileData, setProfileData] = useState<EditProfileData>({
-    displayName: user?.displayName || '',
-    status: user?.status || 'Available'
-  });
 
-  // Mettre à jour le state local quand l'utilisateur change
-  useEffect(() => {
-    if (user) {
-      setProfileData({
-        displayName: user.displayName || '',
-        status: user.status || 'Available'
-      });
-    }
-  }, [user]);
-
-  // Gestion des photos
-  const handlePhotoAction = async (action: () => Promise<string | null>) => {
+  const handleUpdateProfile = async (updates: {
+    displayName?: string;
+    photoURL?: string | null;
+  }) => {
     try {
       setLoading(true);
       setError(null);
-      const result = await action();
-      if (result) {
-        await updateProfile({ photoURL: result });
-      }
+      await updateProfile(updates);
+      setShowModal(false);
     } catch (error) {
-      setError('Failed to update photo');
-      console.error('Photo update error:', error);
+      setError(error instanceof Error ? error.message : 'Failed to update profile');
     } finally {
       setLoading(false);
-      setShowPhotoModal(false);
     }
   };
 
   const handleTakePhoto = async () => {
-    const { status } = await ImagePicker.requestCameraPermissionsAsync();
-    if (status !== 'granted') {
-      setError('Camera permission is required to take a photo');
-      return;
-    }
+    try {
+      setLoading(true);
+      setError(null);
+      const { status } = await ImagePicker.requestCameraPermissionsAsync();
+      if (status !== 'granted') {
+        throw new Error('Camera permission is required');
+      }
 
-    await handlePhotoAction(async () => {
       const result = await ImagePicker.launchCameraAsync({
         mediaTypes: ImagePicker.MediaTypeOptions.Images,
         allowsEditing: true,
@@ -77,183 +45,151 @@ export const ProfileSection = () => {
       });
 
       if (!result.canceled && result.assets[0]) {
-        return result.assets[0].uri;
+        await updateProfile({ photoURL: result.assets[0].uri });
       }
-      return null;
-    });
+    } catch (error) {
+      setError(error instanceof Error ? error.message : 'Failed to take photo');
+    } finally {
+      setLoading(false);
+    }
   };
 
   const handleChoosePhoto = async () => {
-  try {
-    setLoading(true);
-    setError(null);
-    
-    const result = await pickImage({
-      allowsEditing: true,
-      aspect: [1, 1],
-      quality: 0.8,
-    });
+    try {
+      setLoading(true);
+      setError(null);
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        allowsEditing: true,
+        aspect: [1, 1],
+        quality: 0.8,
+      });
 
-    if (result?.uri) {
-      await updateProfile({ photoURL: result.uri });
+      if (!result.canceled && result.assets[0]) {
+        await updateProfile({ photoURL: result.assets[0].uri });
+      }
+    } catch (error) {
+      setError(error instanceof Error ? error.message : 'Failed to choose photo');
+    } finally {
+      setLoading(false);
     }
-  } catch (error) {
-    setError(error instanceof Error ? error.message : 'Failed to update photo');
-    console.error('Photo selection error:', error);
-  } finally {
-    setLoading(false);
-    // Ne fermez pas le modal en cas d'erreur pour afficher le message
-    if (!error) {
-      setShowPhotoModal(false);
-    }
-  }
-};
+  };
 
   const handleRemovePhoto = async () => {
     try {
       setLoading(true);
       setError(null);
       await updateProfile({ photoURL: null });
-      setShowPhotoModal(false);
     } catch (error) {
-      setError('Failed to remove photo');
-      console.error('Photo removal error:', error);
+      setError(error instanceof Error ? error.message : 'Failed to remove photo');
     } finally {
       setLoading(false);
     }
-  };
-
-  // Gestion du profil
-  const handleUpdateProfile = async () => {
-    try {
-      setLoading(true);
-      setError(null);
-      await updateProfile({
-        displayName: profileData.displayName,
-        status: profileData.status
-      });
-      setIsEditing(false);
-    } catch (error) {
-      setError('Failed to update profile');
-      console.error('Profile update error:', error);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const resetForm = () => {
-    setIsEditing(false);
-    setProfileData({
-      displayName: user?.displayName || '',
-      status: user?.status || 'Available'
-    });
-    setError(null);
   };
 
   return (
-    <>
-      <SettingsGroup 
-        title="Profile"
-        description="Manage your personal information"
+    <View style={styles.container}>
+      <TouchableOpacity
+        style={styles.profileCard}
+        onPress={() => setShowModal(true)}
+        activeOpacity={0.7}
       >
-        <View style={styles.photoContainer}>
-          <ProfilePhoto
-            photoURL={user?.photoURL || null}
-            onPress={() => setShowPhotoModal(true)}
-            loading={loading}
-            size={80}
+        {user?.photoURL ? (
+          <Image
+            source={{ uri: user.photoURL }}
+            style={styles.photo}
           />
-        </View>
-
-        <SettingsItem
-          icon={<User size={24} color={colors.text} />}
-          title={user?.displayName || 'Add display name'}
-          description={user?.status || 'Available'}
-          onPress={() => setIsEditing(true)}
-        />
-
-        {error && (
-          <SettingsItem
-            icon={<AlertCircle size={24} color={colors.error} />}
-            title="Error"
-            description={error}
-            onPress={() => setError(null)}
-          />
+        ) : (
+          <View style={styles.photoPlaceholder}>
+            <User size={32} color={colors.textSecondary} />
+          </View>
         )}
-      </SettingsGroup>
 
-      {/* Modal de gestion des photos */}
-      <PhotoManagementModal
-  visible={showPhotoModal}
-  onClose={() => {
-    setShowPhotoModal(false);
-    setError(null);
-  }}
-  onTakePhoto={handleTakePhoto}
-  onChoosePhoto={handleChoosePhoto}
-  onRemovePhoto={handleRemovePhoto}
-  currentPhotoUrl={user?.photoURL || null}
-  hasExistingPhoto={!!user?.photoURL}
-  loading={loading}
-  error={error}
-/>
+        <View style={styles.profileInfo}>
+          <View style={styles.nameSection}>
+            <User size={16} color={colors.textSecondary} />
+            <Text style={styles.name}>
+              {user?.displayName || 'Add your name'}
+            </Text>
+          </View>
 
-      {/* Modal d'édition du profil */}
-      <Modal 
-        visible={isEditing} 
-        onClose={resetForm}
-      >
-        <View style={styles.modalContent}>
-          <Input
-            label="Display Name"
-            value={profileData.displayName}
-            onChangeText={(text) => setProfileData(prev => ({ ...prev, displayName: text }))}
-            placeholder="Enter your name"
-            disabled={loading}
-          />
-
-          <Input
-            label="Status"
-            value={profileData.status}
-            onChangeText={(text) => setProfileData(prev => ({ ...prev, status: text }))}
-            placeholder="Set your status"
-            disabled={loading}
-          />
-
-          <View style={styles.buttonContainer}>
-            <Button
-              title="Cancel"
-              onPress={resetForm}
-              variant="secondary"
-              disabled={loading}
-            />
-            <Button
-              title="Save"
-              onPress={handleUpdateProfile}
-              loading={loading}
-              disabled={!profileData.displayName.trim() || loading}
-            />
+          <View style={styles.emailSection}>
+            <Mail size={16} color={colors.textSecondary} />
+            <Text style={styles.email}>{user?.email}</Text>
           </View>
         </View>
-      </Modal>
-    </>
+      </TouchableOpacity>
+
+      <UnifiedProfileModal
+        visible={showModal}
+        onClose={() => {
+          setShowModal(false);
+          setError(null);
+        }}
+        loading={loading}
+        error={error}
+        userData={{
+          displayName: user?.displayName || '',
+          email: user?.email || '',
+          photoURL: user?.photoURL ?? null,
+        }}
+        onUpdateProfile={handleUpdateProfile}
+        onTakePhoto={handleTakePhoto}
+        onChoosePhoto={handleChoosePhoto}
+        onRemovePhoto={handleRemovePhoto}
+      />
+    </View>
   );
 };
 
 const styles = StyleSheet.create({
-  photoContainer: {
-    alignItems: 'center',
-    paddingVertical: 16,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.border,
+  container: {
+    marginBottom: 24,
+    backgroundColor: colors.surface,
+    borderRadius: 12,
+    overflow: 'hidden',
   },
-  modalContent: {
-    gap: 16,
-  },
-  buttonContainer: {
+  profileCard: {
     flexDirection: 'row',
-    justifyContent: 'flex-end',
-    gap: 8,
-    marginTop: 8,
-  }
+    padding: 16,
+    alignItems: 'center',
+  },
+  photo: {
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+    backgroundColor: colors.surfaceLight,
+  },
+  photoPlaceholder: {
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+    backgroundColor: colors.surfaceLight,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  profileInfo: {
+    flex: 1,
+    marginLeft: 16,
+  },
+  nameSection: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 4,
+  },
+  name: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: colors.text,
+    marginLeft: 8,
+  },
+  emailSection: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  email: {
+    fontSize: 14,
+    color: colors.textSecondary,
+    marginLeft: 8,
+  },
 });
