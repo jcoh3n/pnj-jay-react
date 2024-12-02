@@ -7,156 +7,107 @@ YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
 NC='\033[0m'
 
+# Fonctions utilitaires
+log() { echo -e "${BLUE}$1${NC}"; }
+success() { echo -e "${GREEN}$1${NC}"; }
+warn() { echo -e "${YELLOW}$1${NC}"; }
+error() { echo -e "${RED}$1${NC}"; }
+
 # Vérification de l'environnement
 check_env() {
-  echo -e "${YELLOW}Vérification de l'environnement...${NC}"
+  warn "Vérification de l'environnement..."
   if ! command -v node &> /dev/null; then
-    echo -e "${RED}Node.js n'est pas installé${NC}"
+    error "Node.js n'est pas installé"
     exit 1
   fi
-  echo -e "${GREEN}Environnement OK${NC}"
+  success "Environnement OK"
+}
+
+# Nettoyage rapide
+quick_clean() {
+  warn "Nettoyage rapide..."
+  watchman watch-del-all &>/dev/null
+  rm -rf $TMPDIR/react-* &>/dev/null
+  rm -rf $TMPDIR/metro-* &>/dev/null
+  success "Nettoyage terminé"
+}
+
+# Nettoyage complet
+deep_clean() {
+  warn "Nettoyage complet..."
+  quick_clean
+  rm -rf node_modules
+  rm -rf ios/Pods
+  rm -rf ios/build
+  rm -rf android/build
+  rm -rf android/app/build
+  npm cache clean --force
+  success "Nettoyage complet terminé"
 }
 
 # Installation des dépendances
 install_deps() {
-  echo -e "${YELLOW}Installation des dépendances...${NC}"
-  
-  # Nettoyage des caches
-  echo -e "${BLUE}Nettoyage des caches...${NC}"
-  rm -rf node_modules
-  npm cache clean --force
-  
-  # Installation des dépendances principales
-  echo -e "${BLUE}Installation des dépendances principales...${NC}"
+  warn "Installation des dépendances..."
   npm install --force
-  
-  # Installation des dépendances de développement
-  echo -e "${BLUE}Installation des dépendances de développement...${NC}"
-  npm install --save-dev @expo/ngrok@^4.1.0
-  npm install --save-dev jest jest-expo@latest
-  
-  # Installation d'expo-dev-client
-  echo -e "${BLUE}Installation d'expo-dev-client...${NC}"
   npx expo install expo-dev-client
-  
-  echo -e "${GREEN}Dépendances installées${NC}"
+  npm install --save-dev react-native-svg-transformer
+  success "Dépendances installées"
 }
 
-# Configuration du projet pour le développement
-setup_dev_project() {
-  echo -e "${YELLOW}Configuration du projet pour le développement...${NC}"
-  
-  # Création du fichier app.config.js s'il n'existe pas
-  if [ ! -f app.config.js ]; then
-    echo -e "${BLUE}Création de app.config.js...${NC}"
-    cat > app.config.js << EOL
-export default {
-  expo: {
-    name: "NPC Social Sim",
-    slug: "npc-social-sim",
-    version: "1.0.0",
-    orientation: "portrait",
-    icon: "./assets/icon.png",
-    userInterfaceStyle: "automatic",
-    splash: {
-      image: "./assets/splash.png",
-      resizeMode: "contain",
-      backgroundColor: "#111827"
-    },
-    assetBundlePatterns: ["**/*"],
-    ios: {
-      supportsTablet: true,
-      bundleIdentifier: "com.npcsocialsim.app"
-    },
-    android: {
-      adaptiveIcon: {
-        foregroundImage: "./assets/adaptive-icon.png",
-        backgroundColor: "#111827"
-      },
-      package: "com.npcsocialsim.app"
-    },
-    plugins: [
-      "expo-dev-client",
-      "expo-image-picker",
-      "expo-notifications"
-    ],
-    extra: {
-      eas: {
-        projectId: "your-project-id"
-      }
-    }
-  }
-};
-EOL
-  fi
-  
-  echo -e "${GREEN}Configuration du projet terminée${NC}"
+# Démarrage du dev client
+start_dev() {
+  local mode=$1
+  quick_clean
+  case $mode in
+    "lan") npx expo start --lan --dev-client ;;
+    "local") npx expo start --localhost --dev-client ;;
+    "tunnel") 
+      export EXPO_TUNNEL_SUBDOMAIN=npc-social-sim-$(date +%s)
+      npx expo start --tunnel --dev-client 
+      ;;
+  esac
 }
 
-# Configuration du tunnel
-setup_tunnel() {
-  echo -e "${YELLOW}Configuration du tunnel...${NC}"
-  if ! npm list @expo/ngrok --depth=0 2>/dev/null | grep -q "@expo/ngrok"; then
-    echo -e "${YELLOW}Installation de @expo/ngrok...${NC}"
-    npm install --save-dev @expo/ngrok@^4.1.0
-  fi
-  echo -e "${GREEN}Tunnel configuré${NC}"
-}
-
-# Création du build de développement
-create_dev_build() {
-  echo -e "${YELLOW}Création du build de développement...${NC}"
-  npx expo prebuild --clean
-  echo -e "${GREEN}Build de développement créé${NC}"
+# Menu rapide
+show_menu() {
+  echo -e "\n${YELLOW}=== NPC Social Sim Dev Tools ===${NC}"
+  echo "1) 🚀 Démarrer LAN (dev quotidien)"
+  echo "2) 🧹 Nettoyage rapide + Démarrer"
+  echo "3) 🔄 Clean install + Démarrer"
+  echo "4) 🌐 Démarrer avec Tunnel"
+  echo "5) 🧪 Tests"
+  echo "6) 📱 Build dev iOS"
+  echo "7) 🤖 Build dev Android"
+  echo "q) Quitter"
 }
 
 # Menu principal
 while true; do
-  echo -e "\n${YELLOW}=== Menu NPC Social Sim ===${NC}"
-  echo -e "${GREEN}Mode Développement:${NC}"
-  echo "1) Installation complète avec dev client (première fois)"
-  echo "2) Démarrer sur LAN (développement)"
-  echo "3) Démarrer sur localhost"
-  echo "4) Démarrer avec Tunnel"
-  echo "5) Recréer le build de développement"
-  echo "6) Quitter"
-  read -p "Choix (1-6): " choice
+  show_menu
+  read -p "Choix: " choice
 
   case $choice in
-    1)
-      check_env
-      install_deps
-      setup_dev_project
-      create_dev_build
-      echo -e "${GREEN}Installation terminée. Choisissez l'option 2 pour démarrer en développement.${NC}"
-      ;;
-    2)
-      check_env
-      echo -e "${YELLOW}Démarrage sur LAN avec Dev Client...${NC}"
-      npx expo start --lan --dev-client
+    1) start_dev "lan" ;;
+    2) 
+      quick_clean
+      start_dev "lan"
       ;;
     3)
-      check_env
-      echo -e "${YELLOW}Démarrage sur localhost avec Dev Client...${NC}"
-      npx expo start --localhost --dev-client
+      deep_clean
+      install_deps
+      start_dev "lan"
       ;;
-    4)
-      check_env
-      setup_tunnel
-      echo -e "${YELLOW}Démarrage avec tunnel et Dev Client...${NC}"
-      export EXPO_TUNNEL_SUBDOMAIN=npc-social-sim-$(date +%s)
-      npx expo start --tunnel --dev-client
+    4) start_dev "tunnel" ;;
+    5) npm test ;;
+    6) 
+      quick_clean
+      npx expo run:ios
       ;;
-    5)
-      check_env
-      create_dev_build
+    7)
+      quick_clean
+      npx expo run:android
       ;;
-    6)
-      echo -e "${GREEN}Au revoir !${NC}"
-      exit 0
-      ;;
-    *)
-      echo -e "${RED}Choix invalide${NC}"
-      ;;
+    q|Q) exit 0 ;;
+    *) error "Choix invalide" ;;
   esac
 done
