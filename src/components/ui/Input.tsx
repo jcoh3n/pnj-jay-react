@@ -1,3 +1,4 @@
+// src/components/ui/Input.tsx
 import React from 'react';
 import { View, TextInput, Text, StyleSheet } from 'react-native';
 import { colors } from '../../constants/colors';
@@ -42,6 +43,7 @@ export const Input = ({
         autoCapitalize={autoCapitalize}
         keyboardType={keyboardType}
         editable={!disabled}
+        autoCorrect={false}
       />
       {error && <Text style={styles.errorText}>{error}</Text>}
     </View>
@@ -50,7 +52,7 @@ export const Input = ({
 
 const styles = StyleSheet.create({
   container: {
-    marginBottom: 16,
+    width: '100%',
   },
   label: {
     fontSize: 14,
@@ -66,6 +68,7 @@ const styles = StyleSheet.create({
     borderColor: colors.border,
     color: colors.text,
     fontSize: 16,
+    width: '100%',
   },
   inputError: {
     borderColor: colors.error,

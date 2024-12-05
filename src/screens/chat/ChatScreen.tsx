@@ -1,70 +1,81 @@
-// src/screens/chat/ChatScreen.tsx
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { View, StyleSheet } from 'react-native';
 import { ChatList } from '../../components/chat/ChatList';
 import { ChatArea } from '../../components/chat/ChatArea';
 import { ChatHeader } from '../../components/chat/ChatHeader';
 import { NewChatDialog } from '../../components/chat/NewChatDialog';
-import { EmptyState } from '../../components/ui/EmptyState';
-import { useChat } from '../../hooks/useChat';
 import { useAuthStore } from '../../stores/useAuthStore';
 import { useChatStore } from '../../stores/useChatStore';
 import { colors } from '../../constants/colors';
-import { MessageCircle } from 'lucide-react-native';
+import type { Chat } from '../../types';
 
 export const ChatScreen = () => {
   const [showNewChat, setShowNewChat] = useState(false);
   const { user } = useAuthStore();
-  const { chats, selectedChat, selectChat, createChat } = useChatStore();
-  const { messages, loading, send } = useChat(selectedChat?.id);
+  const { 
+    chats, 
+    currentChat, 
+    messages, 
+    loading, 
+    createNewChat, 
+    sendMessage, 
+    setCurrentChat,
+    subscribeToUpdates 
+  } = useChatStore();
 
-  const handleSelectChat = (chat) => {
-    selectChat(chat);
+  useEffect(() => {
+    if (user) {
+      const unsubscribe = subscribeToUpdates(user.uid);
+      return () => unsubscribe();
+    }
+  }, [user]);
+
+  const handleSelectChat = (chat: Chat) => {
+    setCurrentChat(chat);
   };
 
   const handleBack = () => {
-    selectChat(null);
+    setCurrentChat(null);
   };
 
   const handleNewChat = async (email: string) => {
     try {
-      await createChat(email);
+      await createNewChat(email);
       setShowNewChat(false);
     } catch (error) {
       console.error('Error creating chat:', error);
+      throw error;
+    }
+  };
+
+  const handleSendMessage = async (content: string) => {
+    if (currentChat) {
+      await sendMessage(content);
     }
   };
 
   return (
     <View style={styles.container}>
-      {!selectedChat ? (
-        <>
-          <ChatList
-            chats={chats}
-            onSelectChat={handleSelectChat}
-            onNewChat={() => setShowNewChat(true)}
-          />
-          {chats.length === 0 && (
-            <EmptyState
-              icon={<MessageCircle size={48} color={colors.textSecondary} />}
-              title="No conversations yet"
-              description="Start a new conversation with someone"
-            />
-          )}
-        </>
+      {!currentChat ? (
+        <ChatList
+          chats={chats}
+          loading={loading}
+          onSelectChat={handleSelectChat}
+          onNewChat={() => setShowNewChat(true)}
+        />
       ) : (
         <View style={styles.chatArea}>
           <ChatHeader
-            name={selectedChat.name}
-            avatar={selectedChat.avatar}
-            online={selectedChat.online}
+            name={currentChat.name}
+            avatar={currentChat.avatar}
+            online={currentChat.online}
             onBack={handleBack}
             onOptions={() => {}}
           />
           <ChatArea
-            messages={messages}
+            messages={messages[currentChat.id] || []}
             currentUserId={user?.uid || ''}
-            onSend={send}
+            onSend={handleSendMessage}
             disabled={loading}
           />
         </View>

@@ -1,7 +1,6 @@
-// src/components/chat/NewChatDialog.tsx
+//NewChatDialog.tsx
 import React, { useState } from 'react';
-import { View, StyleSheet } from 'react-native';
-import { Modal } from '../ui/Modal';
+import { View, Text, StyleSheet, Modal } from 'react-native';
 import { Input } from '../ui/Input';
 import { Button } from '../ui/Button';
 import { colors } from '../../constants/colors';
@@ -9,51 +8,40 @@ import { colors } from '../../constants/colors';
 interface NewChatDialogProps {
   visible: boolean;
   onClose: () => void;
-  onSubmit: (email: string) => void;
+  onSubmit: (email: string) => Promise<void>;
   loading?: boolean;
 }
 
-export const NewChatDialog = ({
-  visible,
-  onClose,
-  onSubmit,
-  loading
-}: NewChatDialogProps) => {
+export const NewChatDialog = ({ visible, onClose, onSubmit, loading }: NewChatDialogProps) => {
   const [email, setEmail] = useState('');
+  const [error, setError] = useState('');
 
-  const handleSubmit = () => {
-    if (email.trim()) {
-      onSubmit(email.trim());
+  const handleSubmit = async () => {
+    try {
+      await onSubmit(email);
       setEmail('');
+      onClose();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to create chat');
     }
   };
 
   return (
-    <Modal visible={visible} onClose={onClose}>
-      <View style={styles.container}>
-        <Input
-          label="Email"
-          value={email}
-          onChangeText={setEmail}
-          placeholder="Enter email address"
-          keyboardType="email-address"
-          autoCapitalize="none"
-          disabled={loading}
-        />
-        
-        <View style={styles.buttons}>
-          <Button
-            title="Cancel"
-            onPress={onClose}
-            variant="secondary"
-            disabled={loading}
+    <Modal visible={visible} transparent animationType="fade">
+      <View style={styles.overlay}>
+        <View style={styles.content}>
+          <Text style={styles.title}>New Chat</Text>
+          <Input
+            value={email}
+            onChangeText={setEmail}
+            placeholder="Enter email address"
+            keyboardType="email-address"
           />
-          <Button
-            title="Start Chat"
-            onPress={handleSubmit}
-            loading={loading}
-            disabled={!email.trim()}
-          />
+          {error ? <Text style={styles.error}>{error}</Text> : null}
+          <View style={styles.buttons}>
+            <Button title="Cancel" onPress={onClose} variant="secondary" />
+            <Button title="Create" onPress={handleSubmit} disabled={!email.trim()} />
+          </View>
         </View>
       </View>
     </Modal>
@@ -61,13 +49,31 @@ export const NewChatDialog = ({
 };
 
 const styles = StyleSheet.create({
-  container: {
-    padding: 16,
+  overlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'center',
+    padding: 20,
+  },
+  content: {
+    backgroundColor: colors.background,
+    padding: 20,
+    borderRadius: 8,
+  },
+  title: {
+    fontSize: 20,
+    color: colors.text,
+    marginBottom: 20,
+    textAlign: 'center',
+  },
+  error: {
+    color: colors.error,
+    marginTop: 10,
   },
   buttons: {
     flexDirection: 'row',
-    justifyContent: 'flex-end',
-    gap: 8,
-    marginTop: 16,
+    justifyContent: 'space-between',
+    marginTop: 20,
+    gap: 10,
   },
 });
