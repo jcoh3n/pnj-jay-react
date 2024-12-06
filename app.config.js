@@ -23,15 +23,26 @@ export default {
       },
       package: "com.npcsocialsim.app"
     },
-    plugins: [
-      "expo-dev-client",
-      "expo-image-picker",
-      "expo-notifications"
-    ],
     extra: {
-      eas: {
-        projectId: "your-project-id"
-      }
+    eas: {
+      projectId: "pnj-jay"
     }
+  },
+  plugins: [
+    "expo-dev-client",
+    "expo-image-picker",
+    "expo-notifications",
+    [
+      "expo-build-properties",
+      {
+        "ios": {
+          "newArchEnabled": true
+        },
+        "android": {
+          "newArchEnabled": true
+        }
+      }
+    ]
+  ]
   }
 };

@@ -2,7 +2,7 @@ import React from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import { Check } from 'lucide-react-native';
 import { colors } from '../../constants/colors';
-import { format } from 'date-fns';
+import { formatMessageTime } from '../../utils/format';
 
 interface MessageProps {
   content: string;
@@ -32,7 +32,7 @@ export const Message = ({ content, timestamp, isOutgoing, status }: MessageProps
         <Text style={styles.messageText}>{content}</Text>
         <View style={styles.messageFooter}>
           <Text style={styles.timestamp}>
-            {format(new Date(timestamp), 'HH:mm')}
+            {formatMessageTime(timestamp)}
           </Text>
           {isOutgoing && status && (
             <Check size={16} color={getStatusColor()} />

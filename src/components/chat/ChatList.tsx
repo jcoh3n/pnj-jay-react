@@ -1,9 +1,8 @@
-// src/components/chat/ChatList.tsx
 import React from 'react';
 import { View, FlatList, TouchableOpacity, Text, Image, StyleSheet, Dimensions, RefreshControl } from 'react-native';
 import { MessageSquarePlus, User } from 'lucide-react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { format } from 'date-fns';
+import { formatMessageTime } from '../../utils/format';
 import { colors } from '../../constants/colors';
 import { Chat } from '../../types';
 import { LoadingSpinner } from '../ui/LoadingSpinner';
@@ -49,7 +48,7 @@ export const ChatList = ({
             {item.name}
           </Text>
           <Text style={styles.timestamp}>
-            {format(new Date(item.lastMessageTime), 'HH:mm')}
+            {formatMessageTime(item.lastMessageTime)}
           </Text>
         </View>
 
@@ -143,7 +142,7 @@ const styles = StyleSheet.create({
     marginBottom: 8,
     backgroundColor: colors.surface,
     borderRadius: 12,
-    width: width - 32, // Full width minus padding
+    width: width - 32,
   },
   avatarContainer: {
     position: 'relative',

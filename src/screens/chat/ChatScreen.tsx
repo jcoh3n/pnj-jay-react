@@ -16,18 +16,27 @@ export const ChatScreen = () => {
     chats, 
     currentChat, 
     messages, 
-    loading, 
+    loading,
     createNewChat, 
     sendMessage, 
     setCurrentChat,
-    subscribeToUpdates 
+    subscribeToUpdates,
+    reset 
   } = useChatStore();
 
   useEffect(() => {
+    let unsubscribe: (() => void) | undefined;
+
     if (user) {
-      const unsubscribe = subscribeToUpdates(user.uid);
-      return () => unsubscribe();
+      unsubscribe = subscribeToUpdates(user.uid);
     }
+
+    return () => {
+      if (unsubscribe) {
+        unsubscribe();
+      }
+      reset(); // Reset store state when component unmounts
+    };
   }, [user]);
 
   const handleSelectChat = (chat: Chat) => {

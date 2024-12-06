@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import { useAuthStore } from './useAuthStore';
-import { createChat, sendMessage, subscribeToChat, subscribeToChats } from '../services/api/database';
+import { createChat, sendMessage, subscribeToMessages, subscribeToChats } from '../services/api/database';
 import type { Chat, Message } from '../types';
 
 interface ChatState {
@@ -12,9 +12,10 @@ interface ChatState {
   createNewChat: (recipientEmail: string) => Promise<void>;
   sendMessage: (content: string) => Promise<void>;
   setCurrentChat: (chat: Chat | null) => void;
-  loadMessages: (chatId: string) => Promise<void>;
+  loadMessages: (chatId: string) => () => void; // Return cleanup function
   subscribeToUpdates: (userId: string) => () => void;
   setChats: (chats: Chat[]) => void;
+  reset: () => void; // New reset function
 }
 
 export const useChatStore = create<ChatState>((set, get) => ({
@@ -24,14 +25,28 @@ export const useChatStore = create<ChatState>((set, get) => ({
   loading: false,
   error: null,
 
+  reset: () => {
+    set({
+      chats: [],
+      currentChat: null,
+      messages: {},
+      loading: false,
+      error: null
+    });
+  },
+
   setChats: (chats) => set({ chats }),
 
   subscribeToUpdates: (userId: string) => {
-    return subscribeToChats(
+    set({ loading: true });
+    const unsubscribe = subscribeToChats(
       userId,
-      (chats) => set({ chats }),
-      (error) => set({ error: error.message })
+      (chats) => {
+        set({ chats, loading: false });
+      },
+      (error) => set({ error: error.message, loading: false })
     );
+    return unsubscribe;
   },
 
   createNewChat: async (recipientEmail: string) => {
@@ -78,18 +93,10 @@ export const useChatStore = create<ChatState>((set, get) => ({
     }
   },
 
-  loadMessages: async (chatId: string) => {
+  loadMessages: (chatId: string) => {
     set({ loading: true, error: null });
     
-    interface SubscribeToChatCallback {
-      (messages: Message[]): void;
-    }
-
-    interface SubscribeToChatErrorCallback {
-      (error: Error): void;
-    }
-
-    subscribeToChat(
+    const unsubscribe = subscribeToMessages(
       chatId,
       (messages: Message[]) => {
         set((state) => ({
@@ -104,5 +111,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
         });
       }
     );
+
+    return unsubscribe;
   }
 }));
